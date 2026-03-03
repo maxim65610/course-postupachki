@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 )
 
 const (
@@ -15,7 +16,8 @@ const (
 func main() {
 	server, err := net.Listen(network, addrServer)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Error listening on %s: %v\n", addrServer, err)
+		os.Exit(1)
 	}
 	defer server.Close()
 	for {
