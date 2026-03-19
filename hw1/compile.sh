@@ -17,5 +17,3 @@ else
     echo "Поддерживаемые файлы: hedgedcurl.{cpp,go,py,java}"
     exit 1
 fi
-
-echo "Компиляция hedgedcurl завершена"

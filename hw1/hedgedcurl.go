@@ -12,6 +12,7 @@ import (
 
 type Result struct {
 	URL    string
+	Proto  string
 	Status string
 	Header http.Header
 	Body   []byte
@@ -39,6 +40,7 @@ func fetch(ctx context.Context, client *http.Client, out chan<- Result, url stri
 
 	out <- Result{
 		URL:    url,
+		Proto:  resp.Proto,
 		Status: resp.Status,
 		Header: resp.Header.Clone(),
 		Body:   body,
@@ -47,7 +49,7 @@ func fetch(ctx context.Context, client *http.Client, out chan<- Result, url stri
 }
 
 func printResponse(r Result) {
-	fmt.Printf("HTTP/1.1 %s\n", r.Status)
+	fmt.Printf("%s %s\n", r.Proto, r.Status)
 
 	for k, values := range r.Header {
 		for _, v := range values {
@@ -59,12 +61,12 @@ func printResponse(r Result) {
 }
 
 func main() {
-	var timeoutSeconds int
+	var timeoutShort int
+	var timeoutLong int
 	var showInf bool
 
-	flag.IntVar(&timeoutSeconds, "t", 15, "timeout in seconds")
-	flag.IntVar(&timeoutSeconds, "timeout", 15, "timeout in seconds")
-
+	flag.IntVar(&timeoutShort, "t", -1, "timeout in seconds")
+	flag.IntVar(&timeoutLong, "timeout", -1, "timeout in seconds")
 	flag.BoolVar(&showInf, "h", false, "show inf")
 	flag.BoolVar(&showInf, "help", false, "show inf")
 
@@ -83,6 +85,19 @@ func main() {
 	if showInf {
 		flag.Usage()
 		os.Exit(0)
+	}
+
+	var timeoutSeconds int
+	switch {
+	case timeoutShort != -1 && timeoutLong != -1:
+		fmt.Fprintln(os.Stderr, "error: use either -t or -timeout, not both")
+		os.Exit(1)
+	case timeoutShort != -1:
+		timeoutSeconds = timeoutShort
+	case timeoutLong != -1:
+		timeoutSeconds = timeoutLong
+	default:
+		timeoutSeconds = 15
 	}
 
 	args := flag.Args()
@@ -110,21 +125,24 @@ func main() {
 		go fetch(ctx, client, results, url)
 	}
 
-	errors := 0
-	for errors < len(args) {
-		select {
-		case r := <-results:
-			if r.Err != nil {
-				errors++
-				continue
-			}
-			printResponse(r)
-			cancel()
-			os.Exit(0)
-		case <-ctx.Done():
-			fmt.Fprintln(os.Stderr, "error: timeout")
-			os.Exit(228)
+	received := 0
+
+	for received < len(args) {
+		r := <-results
+		received++
+
+		if r.Err != nil {
+			continue
 		}
+
+		printResponse(r)
+		cancel()
+		os.Exit(0)
+	}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		fmt.Fprintln(os.Stderr, "error: timeout")
+		os.Exit(228)
 	}
 	fmt.Fprintln(os.Stderr, "error: all requests failed")
 	os.Exit(1)
